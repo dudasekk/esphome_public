@@ -1,0 +1,19 @@
+---
+wifi:
+  networks:
+    - ssid: !secret wifi1_ssid
+      password: !secret wifi1_password
+    - ssid: !secret wifi2_ssid
+      password: !secret wifi2_password
+    - ssid: !secret wifi3_ssid
+      password: !secret wifi3_password
+    - ssid: !secret wifi4_ssid
+      password: !secret wifi4_password
+  reboot_timeout: ${reboot_timeout}
+  #fast_connect: true
+  ##power_save_mode: none
+  ap:
+    ssid: ${devicename}
+    password: !secret ap_wifi_password
+
+## captive_portal:

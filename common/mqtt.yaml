@@ -1,0 +1,11 @@
+mqtt:
+  broker: !secret mqtt_broker
+  username: !secret mqtt_user
+  password: !secret mqtt_pw
+  topic_prefix: ${devicename}
+  birth_message:
+    topic: ${devicename}/LWT
+    payload: ''
+  will_message:
+    topic: ${devicename}/LWT
+    payload: ''

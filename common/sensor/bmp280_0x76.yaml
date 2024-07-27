@@ -1,0 +1,7 @@
+platform: bmp280
+temperature:
+  name: ${devicename} BMP280_76 Temperature
+pressure:
+  name: ${devicename} BMP280_76 Pressure
+address: 0x76
+update_interval: ${update_interval}

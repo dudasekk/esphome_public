@@ -1,0 +1,6 @@
+platform: bh1750
+name: ${devicename} BH1750_23 Illuminance
+id: ${devicename}_bh1750_23_illuminance
+address: 0x23
+measurement_time: 69
+update_interval: ${update_interval}

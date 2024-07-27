@@ -1,0 +1,16 @@
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: Europe/Prague
+    ## servers: [192.168.200.1, 0.pool.ntp.org, 1.pool.ntp.org]
+    servers: 
+      - 192.168.200.1
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+##    on_time_sync:
+##      then:
+##        ds1307.write_time:
+##            id: ds1307_time
+
+##  - platform: ds1307
+##    id: ds1307_time

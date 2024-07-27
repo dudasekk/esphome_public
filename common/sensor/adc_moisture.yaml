@@ -1,0 +1,12 @@
+platform: adc
+pin: 34
+id: ${devicename}adcmoisture
+name: "${devicename} Soil moisture"
+unit_of_measurement: "V"
+## On ESP32 need it
+attenuation: 11db
+update_interval: 10s
+##filters:
+##  - calibrate_linear:
+##    - 0.825 -> 0.0
+##    - 0.425 -> 100.0     

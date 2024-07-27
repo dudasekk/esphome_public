@@ -1,0 +1,9 @@
+platform: bme280
+temperature:
+  name: ${devicename} BME280_77 Temperature
+pressure:
+  name: ${devicename} BME280_77 Pressure
+humidity:
+  name: ${devicename} BME280_77 Humidity
+address: 0x77
+update_interval: ${update_interval}

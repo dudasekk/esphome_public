@@ -1,0 +1,6 @@
+platform: adc
+pin: 35
+attenuation: 11db
+id: ${devicename}VBatt
+name: "${devicename}VBatt"
+update_interval: ${update_interval}

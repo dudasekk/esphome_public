@@ -1,0 +1,299 @@
+## LaskaKit ESP32_meteo_mini modul
+# I2C: SDA .... GPIO19
+#      SCL .... GPIO18
+# Ubat via voltage divider 1M/1.3M (1.3/2.3 = 1.769)  to GPIO0
+# DS18B20 onboard: data is GPIO10
+# Flash: GPIO9
+# Volne k pouziti: GPIO1,GPIO2,GPIO3,GPIO4,GPIO5,GPIO6,GPIO7
+
+
+substitutions:
+  devicename: esp32elmer1
+  upper_devicename: ESP32ELMER1
+  reboot_timeout: 1800s
+  update_interval: 60s
+
+esphome:
+  name: ${devicename}
+  platformio_options:
+    board_build.f_flash: 40000000L
+    board_build.flash_mode: dio
+    board_build.flash_size: 4MB
+    board_build.mcu: esp32c3
+  includes:
+    - sensors/iec62056_electricity.h
+  on_shutdown:
+    then:
+      lambda: |-
+        id(my_display).turn_off();
+        WiFi.mode(WIFI_OFF);
+  on_boot:
+    then:
+      lambda: |-
+        id(my_display).turn_on();
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: arduino
+#    type: esp-idf
+
+<<: !include common/wifi.yaml
+<<: !include common/api.yaml
+<<: !include common/ota.yaml
+##<<: !include common/web_server.yaml
+<<: !include common/mqtt.yaml
+<<: !include common/logger.yaml
+##<<: !include common/logger_debug.yaml
+<<: !include common/time.yaml
+
+globals:
+  - id: dynamic_sleep_duration
+    type: int
+    restore_value: no
+     # default sleep time
+    initial_value: '820'
+    #sleep_duration: 820s
+  - id: datasend
+    type: int
+    restore_value: no
+     # default sleep time
+    initial_value: '0'
+    #sleep_duration: 820s
+
+
+## SDA: GPIO5, SCL: GPIO6 test
+##   sda: GPIO5
+##   scl: GPIO6
+##   frequency: 40000
+## usup:
+##   sda: GPIO19
+##   scl: GPIO18
+i2c:
+  - id: i2cdisp
+    sda: GPIO6
+    scl: GPIO7
+    scan: True
+##  - id: i2cusup
+##    sda: GPIO19
+##    scl: GPIO18
+##    scan: True
+
+uart:
+  id: uart_obis
+  rx_pin: GPIO5
+  tx_pin: GPIO4
+  baud_rate: 300
+  data_bits: 7
+  stop_bits: 1
+  parity: EVEN
+  rx_buffer_size: 2048
+##  debug:
+##    direction: BOTH
+##    dummy_receiver: false
+##    after:
+##      delimiter: "\n"
+##    sequence:
+##      - lambda: UARTDebug::log_string(direction, bytes);
+
+custom_component:
+  - id: Elmer1
+    lambda: |-
+      auto my_sensor = iec62056elmeter::instance(id(uart_obis));
+      App.register_component(my_sensor);
+      return {my_sensor};
+
+font:
+  - file: "fonts/DejaVuSans.ttf"
+    id: font1
+    size: 10
+  - file: "fonts/OpenSans-Regular.ttf"
+    id: font2
+    size: 10
+
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x32"
+#    reset_pin: D0
+    i2c_id: i2cdisp
+    address: 0x3C
+    id: my_display
+    lambda: |-
+      it.strftime(64, 10, id(font1), TextAlign::BASELINE_CENTER, "%d.%m.%Y %H:%M:%S", id(sntp_time).now());
+      if ( id(${devicename}IPAddr).has_state()) {
+          it.printf(0, 20, id(font2), TextAlign::BASELINE_LEFT, "IP: %s", id(${devicename}IPAddr).state.c_str());
+         }
+      if (id(${devicename}VBatt).has_state()) {
+          it.printf(0, 32, id(font2), TextAlign::BASELINE_LEFT, "Batt: %.1f V", id(${devicename}VBatt).state);
+         }
+#      if ( id(Elmer1PositiveEnergyT1).has_state()) {
+#          it.printf(0, 21, id(font2), TextAlign::BASELINE_LEFT, "Energy T1: %.1f kWh", id(Elmer1PositiveEnergyT1).state);
+#         }
+#      if ( id(Elmer1PositiveEnergyT2).has_state()) {
+#          it.printf(0, 32, id(font2), TextAlign::BASELINE_LEFT, "Energy T2: %.1f kWh", id(Elmer1PositiveEnergyT2).state);
+#         }
+#
+###      if ( id(${devicename}_Temperature).has_state()) {
+###          it.printf(0, 22, id(fontr), TextAlign::BASELINE_LEFT, "Teplota: %.1f °C", id(${devicename}_Temperature).state);
+###         }
+###      if (id(${devicename}_Pressure).has_state()) {
+###          it.printf(0, 32, id(fontr), TextAlign::BASELINE_LEFT, "Tlak vzduchu: %.1f hPa", id(${devicename}_Pressure).state);
+###         }
+
+
+sensor:
+  - <<: !include common/sensor/uptime.yaml
+  - <<: !include common/sensor/wifi-signal.yaml
+  - platform: adc
+    pin: GPIO0
+    attenuation: 11db
+    id: ${devicename}VBatt
+    name: "${devicename}VBatt"
+    update_interval: ${update_interval}
+    filters:
+      - multiply: 1.769
+    on_value:
+      then:
+        - lambda: |-
+            float VMAX = 3.7;
+            float VMIN = 3.2;
+            double MINIMUM_SLEEPTIME = 520;
+            double SLEEPTIME_VMAX = 520;
+            double SLEEPTIME_VMIN = 3520;
+            float battery_voltage = id(${devicename}VBatt).state;
+            id(dynamic_sleep_duration) = max(MINIMUM_SLEEPTIME, ceil(SLEEPTIME_VMIN - (SLEEPTIME_VMIN-SLEEPTIME_VMAX)*(battery_voltage-VMIN)/(VMAX-VMIN)));
+            id(deep_sleep_1).set_sleep_duration(id(dynamic_sleep_duration)*1000);
+            ESP_LOGI("main", "Sleeptime adjusted to: %d s (%.1f V)", id(dynamic_sleep_duration), battery_voltage);
+
+#  - <<: !include common/sensor/bme280_0x76.yaml
+  - platform: custom
+    lambda: |-
+      auto my_sensor = iec62056elmeter::instance(id(uart_obis));
+      return {my_sensor->ActiveEnergyConstant,my_sensor->TotalEnergy,
+        my_sensor->PositiveEnergyT1,my_sensor->PositiveEnergyT2,
+        my_sensor->TotalPositiveEnergyL1, my_sensor->TotalPositiveEnergyL2,
+        my_sensor->TotalPositiveEnergyL3, my_sensor->TotalNegativeEnergy,
+        my_sensor->TotalNegativeEnergyL1, my_sensor->TotalNegativeEnergyL2,
+        my_sensor->TotalNegativeEnergyL3, my_sensor->ErrorStatus,
+        my_sensor->PowerFailuresOnL1, my_sensor->PowerFailuresOnL2,
+        my_sensor->PowerFailuresOnL3, my_sensor->NumOfMagneticAttacks
+       };
+    sensors:
+      - name: "Elmer1 Active Energy Meter Constant"
+        unit_of_measurement: imp/kWh
+        accuracy_decimals: 0
+        icon: mdi:power-plug
+      - name: "Elmer1 Total Energy"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Positive Energy T1"
+        id: "Elmer1PositiveEnergyT1"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Positive Energy T2"
+        id: "Elmer1PositiveEnergyT2"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Total Positive Energy L1"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Total Positive Energy L2"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Total Positive Energy L3"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Total Negative Energy"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Total Negative Energy L1"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Total Negative Energy L2"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Total Negative Energy L3"
+        unit_of_measurement: kWh
+        accuracy_decimals: 3
+        icon: mdi:power-plug
+      - name: "Elmer1 Error Status"
+        icon: mdi:power-plug
+      - name: "Elmer1 Power Failures on L1"
+        icon: mdi:power-plug
+      - name: "Elmer1 Power Failures on L2"
+        icon: mdi:power-plug
+      - name: "Elmer1 Power Failures on L3"
+        icon: mdi:power-plug
+      - name: "Elmer1 Number Of Magnetic Attacks"
+        icon: mdi:power-plug
+    
+binary_sensor:
+  - <<: !include common/binary_sensor/status.yaml
+  - platform: custom
+    lambda: |-
+      auto my_sensor = iec62056elmeter::instance(id(uart_obis));
+      return {my_sensor->DataRunning };
+    binary_sensors:
+      - name: "Elmer1 Running communication"
+        icon: mdi:icon-compass
+        on_release:
+          then:
+            - lambda: |-
+                id(datasend) = id(datasend) + 1;
+                ESP_LOGI("main", "Datasend set to %d from 3", id(datasend));
+                if(id(datasend) > 3) { id(deep_sleep_1).begin_sleep(); }
+                
+
+text_sensor:
+  - <<: !include common/text_sensor/version.yaml
+  - <<: !include common/text_sensor/wifi-info.yaml
+  - platform: custom
+    lambda: |-
+      auto my_sensor = iec62056elmeter::instance(id(uart_obis));
+      return {my_sensor->DeviceType, my_sensor->DeviceSN, my_sensor->CustomerNr,
+              my_sensor->SWVersion,
+              my_sensor->LastCfgTime, my_sensor->LastReadOutTime,
+              my_sensor->OperatingPeriodT1, my_sensor->OperatingPeriodT2,
+              my_sensor->OperatingPeriodTotalPositiveEnergy,
+              my_sensor->OperatingPeriodTotalNegativeEnergy
+      };
+    text_sensors:
+      - name: "Elmer1 Device Type"
+      - name: "Elmer1 Device SN"
+      - name: "Elmer1 Customer ID"
+      - name: "Elmer1 SW Version"
+      - name: "Elmer1 Last Cfg Timestamp"
+      - name: "Elmer1 Last ReadOut Timestamp"
+      - name: "Elmer1 Operating Period T1"
+      - name: "Elmer1 Operating Period T2"
+      - name: "Elmer1 Operating Period Total Positive Energy"
+      - name: "Elmer1 Operating Period Total Negative Energy"
+
+
+
+switch:
+  - <<: !include common/switch/restart.yaml
+
+##interval:
+## - interval: 10s
+##    then:
+##      - uart.write: !lambda
+##              char buf[128];
+##              sprintf(buf, "ADC %.1f V\n", id(${devicename}VBatt).state);
+##              std::string s = buf;
+##              return std::vector<unsigned char>( s.begin(), s.end() );
+
+deep_sleep:
+  id: deep_sleep_1
+
